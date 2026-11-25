@@ -278,6 +278,8 @@ private fun MyItemsScreen(
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val visibleItems = searchItems(myItems.orEmpty(), searchQuery)
 
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
@@ -287,7 +289,20 @@ private fun MyItemsScreen(
         TextButton(onClick = onSignOut, enabled = !deleting) { Text("Sign Out") }
         Button(onClick = onAddItem, enabled = !deleting) { Text("Add Item") }
 
-
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search by title or location") },
+            singleLine = true,
+            enabled = !deleting,
+            modifier = Modifier.fillMaxWidth()
+        )
+        TextButton(
+            onClick = { searchQuery = "" },
+            enabled = searchQuery.isNotEmpty() && !deleting
+        ) {
+            Text("Clear")
+        }
 
         if (deleteError) {
             Text(
@@ -304,7 +319,7 @@ private fun MyItemsScreen(
             myItems == null -> CircularProgressIndicator()
             myItems.isEmpty() -> Text("No items reported yet.")
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(myItems, key = { it.id }) { item ->
+                items(visibleItems, key = { it.id }) { item ->
                     Column {
                         Text(item.title, style = MaterialTheme.typography.titleMedium)
                         Text("${item.status} · ${item.location}")
