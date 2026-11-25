@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function validCategory(ref) {
+      return ref is path
+        && (
+          ref == /databases/$(database)/documents/categories/clothing
+          || ref == /databases/$(database)/documents/categories/electronics
+          || ref == /databases/$(database)/documents/categories/keys
+          || ref == /databases/$(database)/documents/categories/other
+        )
+        && exists(ref);
+    }
+
+    function validIncidentDate(dayText, incident) {
+      return dayText is string
+        && dayText.matches('[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])')
+        && incident is timestamp
+        && incident == incident.date()
+        && incident.year() == int(dayText[0:4])
+        && incident.month() == int(dayText[5:7])
+        && incident.day() == int(dayText[8:10]);
+    }
+
+    function validItem(data) {
+      let fields = [
+        'title', 'description', 'location', 'date', 'incidentDate', 'status',
+        'categoryRef', 'ownerId', 'createdAt', 'updatedAt'
+      ];
+
+      return data.keys().hasAll(fields)
+        && data.keys().hasOnly(fields)
+        && data.ownerId == request.auth.uid
+        && data.title is string
+        && data.title.matches('.*\\S.*')
+        && data.description is string
+        && data.location is string
+        && data.location.matches('.*\\S.*')
+        && validIncidentDate(data.date, data.incidentDate)
+        && data.status in ['LOST', 'FOUND', 'RESOLVED']
+        && validCategory(data.categoryRef)
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time;
+    }
+
+    match /categories/{categoryId} {
+      allow read: if request.auth != null;
+    }
+
+    match /lostFoundItems/{itemId} {
+      allow read: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+      allow delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
+
+      allow create: if request.auth != null
+        && validItem(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+
+      allow update: if request.auth != null
+        && resource.data.ownerId == request.auth.uid
+        && validItem(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'description', 'location', 'date', 'incidentDate',
+          'status', 'categoryRef', 'updatedAt'
+        ]);
+    }
+  }
+}

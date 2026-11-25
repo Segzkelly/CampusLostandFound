@@ -1,55 +1,63 @@
-
 package com.gabriel.campuslostandfound
 
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModelProvider
+import com.gabriel.campuslostandfound.state.CampusAppState
+import com.gabriel.campuslostandfound.state.SignedInSession
+import com.gabriel.campuslostandfound.ui.AuthScreen
+import com.gabriel.campuslostandfound.ui.MyItemsScreen
 import com.gabriel.campuslostandfound.ui.theme.CampusLostAndFoundTheme
-import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val appState = ViewModelProvider(this, CampusAppStateFactory)[CampusAppState::class.java]
+        setContent { CampusApp(appState) }
+    }
+}
 
-        val auth = FirebaseAuth.getInstance()
+@Composable
+private fun CampusApp(appState: CampusAppState) {
+    val auth by appState.auth.state.collectAsState()
+    val session by appState.session.collectAsState()
+    ShowToast(auth.notice, appState.auth::consumeNotice)
 
-        setContent {
-            CampusLostAndFoundTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    AuthScreen(
-                        auth = auth,
-                        modifier = Modifier.padding(innerPadding),
-                        onSignedIn = { email ->
-                            Toast.makeText(
-                                this,
-                                "Welcome, $email!",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    )
+    CampusLostAndFoundTheme {
+        Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
+            val modifier = Modifier.padding(padding)
+            val signedIn = session
+            when {
+                auth.userId == null -> AuthScreen(
+                    state = auth,
+                    onEmailChange = appState.auth::changeEmail,
+                    onPasswordChange = appState.auth::changePassword,
+                    onToggleRegistration = appState.auth::toggleRegistration,
+                    onSubmit = appState.auth::submit,
+                    modifier = modifier
+                )
+
+                signedIn != null && signedIn.userId == auth.userId -> key(signedIn.userId) {
+                    SignedInScreen(signedIn, appState.auth::signOut, modifier)
+                }
+
+                else -> Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
             }
         }
@@ -57,159 +65,55 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AuthScreen(
-    auth: FirebaseAuth,
-    modifier: Modifier = Modifier,
-    onSignedIn: (String) -> Unit
+private fun SignedInScreen(
+    session: SignedInSession,
+    onSignOut: () -> Unit,
+    modifier: Modifier
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var isRegistering by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val list by session.list.state.collectAsState()
+    val form by session.form.collectAsState()
+    ShowToast(list.deleteNotice, session.list::consumeDeleteNotice)
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Campus Lost and Found",
-            style = MaterialTheme.typography.headlineMedium
+    val activeForm = form
+    if (activeForm == null) {
+        MyItemsScreen(
+            state = list,
+            onSignOut = onSignOut,
+            onAddItem = session::addItem,
+            onEditItem = session::editItem,
+            onSearch = session.list::search,
+            onSort = session.list::sort,
+            onRequestDelete = session.list::requestDelete,
+            onCancelDelete = session.list::cancelDelete,
+            onConfirmDelete = session.list::confirmDelete,
+            modifier = modifier
         )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = if (isRegistering) {
-                "Create your student account"
-            } else {
-                "Sign in to find or report lost items"
-            },
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = {
-                email = it
-                errorMessage = null
-            },
-            label = { Text("Email address") },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email
-            ),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = {
-                password = it
-                errorMessage = null
-            },
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password
-            ),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        errorMessage?.let {
-            Text(
-                text = it,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        Button(
-            onClick = {
-                val cleanEmail = email.trim()
-
-                if (cleanEmail.isBlank() || password.isBlank()) {
-                    errorMessage = "Enter your email and password."
-                } else if (isRegistering && password.length < 6) {
-                    errorMessage = "Password must contain at least 6 characters."
-                } else {
-                    isLoading = true
-                    errorMessage = null
-
-                    val task = if (isRegistering) {
-                        auth.createUserWithEmailAndPassword(
-                            cleanEmail,
-                            password
-                        )
-                    } else {
-                        auth.signInWithEmailAndPassword(
-                            cleanEmail,
-                            password
-                        )
-                    }
-
-                    task.addOnCompleteListener { result ->
-                        isLoading = false
-
-                        if (result.isSuccessful) {
-                            onSignedIn(cleanEmail)
-                        } else {
-                            errorMessage = result.exception?.localizedMessage
-                                ?: "Authentication failed. Please try again."
-                        }
-                    }
-                }
-            },
-            enabled = !isLoading,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator()
-            } else {
-                Text(if (isRegistering) "Create Account" else "Sign In")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        TextButton(
-            onClick = {
-                isRegistering = !isRegistering
-                errorMessage = null
-            },
-            enabled = !isLoading
-        ) {
-            Text(
-                if (isRegistering) {
-                    "Already have an account? Sign in"
-                } else {
-                    "New here? Create an account"
-                }
+    } else {
+        key(activeForm) {
+            val formState by activeForm.state.collectAsState()
+            ItemFormScreen(
+                state = formState,
+                onTitleChange = activeForm::changeTitle,
+                onDescriptionChange = activeForm::changeDescription,
+                onLocationChange = activeForm::changeLocation,
+                onDateChange = activeForm::changeDate,
+                onStatusChange = activeForm::changeStatus,
+                onCategoryChange = activeForm::changeCategory,
+                onSave = activeForm::save,
+                onCancel = session::cancelForm,
+                modifier = modifier
             )
         }
+    }
+}
 
-        if (auth.currentUser != null) {
-            TextButton(
-                onClick = {
-                    auth.signOut()
-                    email = ""
-                    password = ""
-                    errorMessage = null
-                }
-            ) {
-                Text("Sign Out")
-            }
+@Composable
+private fun ShowToast(message: String?, onShown: () -> Unit) {
+    val context = LocalContext.current
+    LaunchedEffect(message) {
+        if (message != null) {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            onShown()
         }
     }
 }
