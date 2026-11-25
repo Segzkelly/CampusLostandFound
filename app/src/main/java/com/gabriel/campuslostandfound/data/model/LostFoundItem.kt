@@ -15,3 +15,7 @@ data class LostFoundItem(
     val createdAt: Timestamp? = null,
     val updatedAt: Timestamp? = null
 )
+
+// Used by the form state holder. Not a field in the Firestore document.
+internal val LostFoundItem.categoryId: String
+    get() = categoryRef?.id.orEmpty()

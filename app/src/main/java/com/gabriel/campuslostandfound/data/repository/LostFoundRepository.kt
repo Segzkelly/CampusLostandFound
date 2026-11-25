@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.Flow
 interface LostFoundRepository {
     fun observeMyItems(): Flow<List<LostFoundItem>>
 
+    suspend fun getItem(itemId: String): LostFoundItem?
+
     suspend fun getCategories(): List<Category>
 
     suspend fun addItem(
