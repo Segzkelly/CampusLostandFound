@@ -8,8 +8,8 @@ data class LostFoundItem(
     val title: String = "",
     val description: String = "",
     val location: String = "",
-    val date: String = "", // Format: YYYY-MM-DD
-    val status: String = "LOST", // LOST, FOUND, or RESOLVED
+    val date: String = "",
+    val status: String = "LOST",
     val categoryRef: DocumentReference? = null,
     val ownerId: String = "",
     val createdAt: Timestamp? = null,
