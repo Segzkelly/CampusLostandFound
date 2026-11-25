@@ -2,9 +2,11 @@ package com.gabriel.campuslostandfound.data.repository
 
 import com.gabriel.campuslostandfound.data.model.Category
 import com.gabriel.campuslostandfound.data.model.LostFoundItem
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import java.time.LocalDate
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -116,13 +118,20 @@ class FirestoreLostFoundRepository(
         date: String,
         status: String,
         categoryId: String
-    ): Map<String, Any> = mapOf(
-        "title" to title.trim(),
-        "description" to description.trim(),
-        "location" to location.trim(),
-        "date" to date.trim(),
-        "status" to status,
-        "categoryRef" to firestore.collection("categories").document(categoryId),
-        "updatedAt" to FieldValue.serverTimestamp()
-    )
+    ): Map<String, Any> {
+        val day = date.trim()
+        // A date-only value: use UTC midnight rather than the device time zone.
+        val incidentDate = Timestamp(LocalDate.parse(day).toEpochDay() * 86_400L, 0)
+
+        return mapOf(
+            "title" to title.trim(),
+            "description" to description.trim(),
+            "location" to location.trim(),
+            "date" to day,
+            "incidentDate" to incidentDate,
+            "status" to status,
+            "categoryRef" to firestore.collection("categories").document(categoryId),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+    }
 }

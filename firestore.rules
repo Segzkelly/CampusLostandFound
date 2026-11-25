@@ -13,9 +13,19 @@ service cloud.firestore {
         && exists(ref);
     }
 
+    function validIncidentDate(dayText, incident) {
+      return dayText is string
+        && dayText.matches('[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])')
+        && incident is timestamp
+        && incident == incident.date()
+        && incident.year() == int(dayText[0:4])
+        && incident.month() == int(dayText[5:7])
+        && incident.day() == int(dayText[8:10]);
+    }
+
     function validItem(data) {
       let fields = [
-        'title', 'description', 'location', 'date', 'status',
+        'title', 'description', 'location', 'date', 'incidentDate', 'status',
         'categoryRef', 'ownerId', 'createdAt', 'updatedAt'
       ];
 
@@ -27,8 +37,7 @@ service cloud.firestore {
         && data.description is string
         && data.location is string
         && data.location.matches('.*\\S.*')
-        && data.date is string
-        && data.date.matches('[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])')
+        && validIncidentDate(data.date, data.incidentDate)
         && data.status in ['LOST', 'FOUND', 'RESOLVED']
         && validCategory(data.categoryRef)
         && data.createdAt is timestamp
@@ -44,7 +53,6 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
       allow delete: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
-        
 
       allow create: if request.auth != null
         && validItem(request.resource.data)
@@ -54,7 +62,7 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid
         && validItem(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'description', 'location', 'date',
+          'title', 'description', 'location', 'date', 'incidentDate',
           'status', 'categoryRef', 'updatedAt'
         ]);
     }

@@ -13,7 +13,8 @@ data class LostFoundItem(
     val categoryRef: DocumentReference? = null,
     val ownerId: String = "",
     val createdAt: Timestamp? = null,
-    val updatedAt: Timestamp? = null
+    val updatedAt: Timestamp? = null,
+    val incidentDate: Timestamp? = null // Older reports may still have just the date string.
 )
 
 // Used by the form state holder. Not a field in the Firestore document.
