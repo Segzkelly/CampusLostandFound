@@ -2,6 +2,10 @@ package com.gabriel.campuslostandfound
 
 import android.os.Bundle
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.AlertDialog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -278,6 +282,8 @@ private fun MyItemsScreen(
     var deleting by remember { mutableStateOf(false) }
     var deleteError by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    var sortOrder by rememberSaveable { mutableStateOf(ItemSortOrder.NEWEST) }
+    var sortMenuOpen by remember { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val visibleItems = searchItems(myItems.orEmpty(), searchQuery)
 
@@ -288,6 +294,31 @@ private fun MyItemsScreen(
         Text("My Items", style = MaterialTheme.typography.headlineMedium)
         TextButton(onClick = onSignOut, enabled = !deleting) { Text("Sign Out") }
         Button(onClick = onAddItem, enabled = !deleting) { Text("Add Item") }
+
+        Box {
+            TextButton(
+                onClick = { sortMenuOpen = true },
+                enabled = !deleting
+            ) {
+                Text("Sort: ${sortOrder.label}")
+            }
+
+            DropdownMenu(
+                expanded = sortMenuOpen,
+                onDismissRequest = { sortMenuOpen = false }
+            ) {
+                ItemSortOrder.values().forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            sortOrder = option
+                            sortMenuOpen = false
+                        }
+                    )
+                }
+            }
+        }
+
 
         OutlinedTextField(
             value = searchQuery,
@@ -320,7 +351,7 @@ private fun MyItemsScreen(
             myItems.isEmpty() -> Text("No items reported yet.")
             visibleItems.isEmpty() -> Text("No items match your search.")
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(visibleItems, key = { it.id }) { item ->
+                items(sortItems(visibleItems, sortOrder), key = { it.id }) { item ->
                     Column {
                         Text(item.title, style = MaterialTheme.typography.titleMedium)
                         Text("${item.status} · ${item.location}")
