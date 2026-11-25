@@ -41,6 +41,7 @@ service cloud.firestore {
 
     match /lostFoundItems/{itemId} {
       allow read: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
       allow delete: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
         
