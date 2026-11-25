@@ -318,6 +318,7 @@ private fun MyItemsScreen(
             )
             myItems == null -> CircularProgressIndicator()
             myItems.isEmpty() -> Text("No items reported yet.")
+            visibleItems.isEmpty() -> Text("No items match your search.")
             else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(visibleItems, key = { it.id }) { item ->
                     Column {
