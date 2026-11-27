@@ -18,7 +18,8 @@ internal data class ItemRow(
     val title: String,
     val location: String,
     val status: String,
-    val canEdit: Boolean
+    val canEdit: Boolean,
+    val reviewStatus: String = "PENDING"
 )
 
 internal data class MyItemsUiState(
@@ -122,7 +123,8 @@ internal class MyItemsStateHolder(
                     title = item.title,
                     location = item.location,
                     status = item.status,
-                    canEdit = item.createdAt != null
+                    canEdit = item.createdAt != null,
+                    reviewStatus = item.reviewStatus
                 )
             }
         )

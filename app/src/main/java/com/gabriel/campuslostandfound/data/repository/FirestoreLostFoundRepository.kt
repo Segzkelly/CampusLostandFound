@@ -81,7 +81,11 @@ class FirestoreLostFoundRepository(
         }
         val document = firestore.collection("lostFoundItems").document()
         val fields = editableFields(title, description, location, date, status, categoryId) +
-            mapOf("ownerId" to ownerId, "createdAt" to FieldValue.serverTimestamp())
+                mapOf(
+                    "ownerId" to ownerId,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "reviewStatus" to "PENDING"
+                )
 
         document.set(fields).awaitResult()
         return document.id

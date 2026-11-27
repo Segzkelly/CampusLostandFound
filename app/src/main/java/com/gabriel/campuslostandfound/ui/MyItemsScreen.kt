@@ -122,6 +122,14 @@ internal fun MyItemsScreen(
                     ) {
                         Text(item.title, style = MaterialTheme.typography.titleMedium)
                         Text("${item.status} · ${item.location}")
+
+                        val reviewLabel = when (item.reviewStatus) {
+                            "PENDING" -> "Pending"
+                            "CONFIRMED" -> "Confirmed"
+                            "REJECTED" -> "Rejected"
+                            else -> "Unknown"
+                        }
+                        Text("Review: $reviewLabel")
                     }
 
                     if (item.canEdit) {
