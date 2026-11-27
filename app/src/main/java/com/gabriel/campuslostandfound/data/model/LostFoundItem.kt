@@ -15,7 +15,8 @@ data class LostFoundItem(
     val createdAt: Timestamp? = null,
     val updatedAt: Timestamp? = null,
     val incidentDate: Timestamp? = null,
-    val reviewStatus: String = "PENDING"
+    val reviewStatus: String = "PENDING",
+    val reviewReason: String? = null
 )
 
 // Used by the form state holder. Not a field in the Firestore document.

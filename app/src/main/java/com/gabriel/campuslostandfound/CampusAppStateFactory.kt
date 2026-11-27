@@ -1,6 +1,7 @@
 package com.gabriel.campuslostandfound
 
 import androidx.lifecycle.ViewModel
+import com.google.firebase.functions.FirebaseFunctions
 import androidx.lifecycle.ViewModelProvider
 import com.gabriel.campuslostandfound.data.repository.FirebaseAuthRepository
 import com.gabriel.campuslostandfound.data.repository.FirestoreLostFoundRepository
@@ -17,6 +18,7 @@ internal object CampusAppStateFactory : ViewModelProvider.Factory {
             }
             FirebaseAuth.getInstance().useEmulator("127.0.0.1", 9099)
             FirebaseFirestore.getInstance().useEmulator("127.0.0.1", 8080)
+            FirebaseFunctions.getInstance().useEmulator("127.0.0.1", 5001)
         }
     }
 

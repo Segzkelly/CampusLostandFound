@@ -30,7 +30,9 @@ service cloud.firestore {
       ];
 
       return data.keys().hasAll(fields)
-        && data.keys().hasOnly(fields.concat(['reviewStatus']))
+        && data.keys().hasOnly(fields.concat([
+          'reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt'
+        ]))
         && data.ownerId == request.auth.uid
         && data.title is string
         && data.title.matches('.*\\S.*')
@@ -56,6 +58,9 @@ service cloud.firestore {
 
       allow create: if request.auth != null
         && validItem(request.resource.data)
+        && !request.resource.data.keys().hasAny([
+          'reviewReason', 'reviewedBy', 'reviewedAt'
+        ])
         && request.resource.data.reviewStatus == 'PENDING'
         && request.resource.data.createdAt == request.time;
 
