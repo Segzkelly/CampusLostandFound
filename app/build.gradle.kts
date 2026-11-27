@@ -22,6 +22,11 @@ android {
     }
 
     buildTypes {
+
+        debug {
+            applicationIdSuffix = ".lab3"
+        }
+
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -38,6 +43,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

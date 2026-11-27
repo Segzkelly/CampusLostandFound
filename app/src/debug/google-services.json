@@ -1,0 +1,20 @@
+{
+  "project_info": {
+    "project_number": "123456789012",
+    "project_id": "demo-campus-lab3"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123456789012:android:0123456789abcdef",
+        "android_client_info": {
+          "package_name": "com.gabriel.campuslostandfound.lab3"
+        }
+      },
+      "api_key": [
+        { "current_key": "AIzaSy000000000000000000000000000000000" }
+      ]
+    }
+  ],
+  "configuration_version": "1"
+}
