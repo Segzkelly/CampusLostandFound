@@ -53,6 +53,7 @@ service cloud.firestore {
     match /lostFoundItems/{itemId} {
       allow read: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
+
       allow delete: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
 
@@ -70,7 +71,13 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'title', 'description', 'location', 'date', 'incidentDate',
           'status', 'categoryRef', 'updatedAt'
-        ]);
+        ])
+        && (
+          resource.data.get('reviewStatus', 'PENDING') != 'CONFIRMED'
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updatedAt'
+          ])
+        );
     }
   }
 }
