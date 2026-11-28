@@ -16,6 +16,11 @@ jobs:
     timeout-minutes: 20
 
     steps:
+        
+      - name: Intentional failure for R7 demonstration
+        run: exit 1
+
+      - uses: actions/checkout@v6
       - uses: actions/checkout@v6
 
       - uses: actions/setup-java@v4
