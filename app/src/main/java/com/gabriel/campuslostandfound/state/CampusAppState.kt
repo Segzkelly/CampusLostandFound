@@ -26,14 +26,15 @@ internal class CampusAppState(
         viewModelScope.launch {
             auth.state.map { it.userId }.distinctUntilChanged().collect { userId ->
                 _session.value?.close()
-                _session.value = userId?.let { SignedInSession(it, itemsRepository, viewModelScope) }
+                _session.value = userId?.let {
+                    SignedInSession(it, itemsRepository, viewModelScope)
+                }
             }
         }
     }
 }
 
-// One route and one list holder per signed-in user. Form and listener jobs
-// cannot outlive this session. The Activity's ViewModel retains it on rotation.
+// The form and list listener cannot outlive the signed-in session.
 internal class SignedInSession(
     val userId: String,
     private val repository: LostFoundRepository,

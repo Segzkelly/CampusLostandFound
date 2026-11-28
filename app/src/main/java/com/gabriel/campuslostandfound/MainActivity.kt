@@ -42,6 +42,7 @@ private fun CampusApp(appState: CampusAppState) {
         Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
             val modifier = Modifier.padding(padding)
             val signedIn = session
+
             when {
                 auth.userId == null -> AuthScreen(
                     state = auth,
@@ -86,7 +87,8 @@ private fun SignedInScreen(
             onRequestDelete = session.list::requestDelete,
             onCancelDelete = session.list::cancelDelete,
             onConfirmDelete = session.list::confirmDelete,
-            modifier = modifier
+            modifier = modifier,
+            onOpenReviewQueue = null
         )
     } else {
         key(activeForm) {

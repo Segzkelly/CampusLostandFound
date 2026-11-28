@@ -1,0 +1,80 @@
+name: Lab 3 CI
+
+on:
+  push:
+    branches: [sprint-3-lab3, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android SDK platform
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36.1"'
+
+      - name: Build debug APK and run Android unit tests
+        run: bash ./gradlew :app:assembleDebug :app:testDebugUnitTest
+
+      - name: Upload Android test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-reports
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: warn
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Run listing policy unit tests
+        run: node --test functions/listingPolicy.test.js
+
+      - name: Run Firestore rules regression tests
+        run: |
+          npx --yes --package=firebase-tools@15.37.0 firebase emulators:exec \
+            --config firebase.rules-test.json \
+            --only firestore \
+            --project demo-campus-lab3-rules \
+            "node --test functions/firestore.rules.test.js"
+
+      - name: Run automatic review integration test
+        env:
+          FUNCTIONS_DISCOVERY_TIMEOUT: '30'
+        run: |
+          npx --yes --package=firebase-tools@15.37.0 firebase emulators:exec \
+            --config firebase.r4-test.json \
+            --only firestore,functions \
+            --project demo-campus-lab3-r4 \
+            "node --test functions/reviewReport.integration.js"

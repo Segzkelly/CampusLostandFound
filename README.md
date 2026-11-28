@@ -63,3 +63,7 @@ Run Android unit tests and build the debug APK on Windows:
 - Verified on a second team member's device.
 - Invalid input is handled without crashing.
 - The corresponding Sprint 2 issue is closed.
+
+## How to run Lab 3 locally
+
+Follow the [Lab 3 local setup guide](docs/Lab3.md) to start the Firebase emulators, seed the demo accounts and categories, and run the Android debug build on a USB-connected phone.

@@ -30,7 +30,9 @@ service cloud.firestore {
       ];
 
       return data.keys().hasAll(fields)
-        && data.keys().hasOnly(fields)
+        && data.keys().hasOnly(fields.concat([
+          'reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt'
+        ]))
         && data.ownerId == request.auth.uid
         && data.title is string
         && data.title.matches('.*\\S.*')
@@ -49,22 +51,50 @@ service cloud.firestore {
     }
 
     match /lostFoundItems/{itemId} {
+      function validOwnerEdit() {
+        let next = request.resource.data;
+        let changed = next.diff(resource.data).affectedKeys();
+        let titleChanged = changed.hasAny(['title']);
+        let wasConfirmed = resource.data.get('reviewStatus', 'PENDING') == 'CONFIRMED';
+
+        return changed.hasOnly([
+          'title', 'description', 'location', 'date', 'incidentDate',
+          'status', 'categoryRef', 'updatedAt',
+          'reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt'
+        ])
+        && (
+          !wasConfirmed || changed.hasOnly([
+            'title', 'status', 'updatedAt',
+            'reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt'
+          ])
+        )
+        && (
+          (titleChanged
+            && next.reviewStatus == 'PENDING'
+            && !next.keys().hasAny(['reviewReason', 'reviewedBy', 'reviewedAt']))
+          || (!titleChanged
+            && !changed.hasAny(['reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt']))
+        );
+      }
+
       allow read: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
+
       allow delete: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
 
       allow create: if request.auth != null
         && validItem(request.resource.data)
+        && !request.resource.data.keys().hasAny([
+          'reviewReason', 'reviewedBy', 'reviewedAt'
+        ])
+        && request.resource.data.reviewStatus == 'PENDING'
         && request.resource.data.createdAt == request.time;
 
       allow update: if request.auth != null
         && resource.data.ownerId == request.auth.uid
         && validItem(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'description', 'location', 'date', 'incidentDate',
-          'status', 'categoryRef', 'updatedAt'
-        ]);
+        && validOwnerEdit();
     }
   }
 }

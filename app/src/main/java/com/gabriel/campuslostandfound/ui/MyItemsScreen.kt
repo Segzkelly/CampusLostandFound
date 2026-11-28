@@ -40,7 +40,8 @@ internal fun MyItemsScreen(
     onRequestDelete: (String) -> Unit,
     onCancelDelete: () -> Unit,
     onConfirmDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenReviewQueue: (() -> Unit)? = null
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
 
@@ -52,6 +53,15 @@ internal fun MyItemsScreen(
         item { Text("My Items", style = MaterialTheme.typography.headlineMedium) }
         item { TextButton(onClick = onSignOut, enabled = !state.deleting) { Text("Sign Out") } }
         item { Button(onClick = onAddItem, enabled = !state.deleting) { Text("Add Item") } }
+
+        if (onOpenReviewQueue != null) {
+            item {
+                Button(onClick = onOpenReviewQueue, enabled = !state.deleting) {
+                    Text("Review Queue")
+                }
+            }
+        }
+
         item {
             Box {
                 TextButton(
@@ -76,6 +86,7 @@ internal fun MyItemsScreen(
                 }
             }
         }
+
         item {
             OutlinedTextField(
                 value = state.searchQuery,
@@ -86,11 +97,14 @@ internal fun MyItemsScreen(
                 modifier = Modifier.fillMaxWidth()
             )
         }
+
         item {
             TextButton(
                 onClick = { onSearch("") },
                 enabled = state.searchQuery.isNotEmpty() && !state.deleting
-            ) { Text("Clear") }
+            ) {
+                Text("Clear")
+            }
         }
 
         if (state.deleteFailed) {
@@ -110,7 +124,9 @@ internal fun MyItemsScreen(
                 )
             }
             state.isLoading -> item { CircularProgressIndicator() }
-            !state.hasItems -> item { Text("No items reported yet. Use Add Item to report your first item.") }
+            !state.hasItems -> item {
+                Text("No items reported yet. Use Add Item to report your first item.")
+            }
             state.visibleItems.isEmpty() -> item { Text("No items match your search.") }
             else -> items(state.visibleItems, key = { it.id }) { item ->
                 Column {
@@ -122,13 +138,30 @@ internal fun MyItemsScreen(
                     ) {
                         Text(item.title, style = MaterialTheme.typography.titleMedium)
                         Text("${item.status} · ${item.location}")
+
+                        val reviewLabel = when (item.reviewStatus) {
+                            "PENDING" -> "Pending"
+                            "CONFIRMED" -> "Confirmed"
+                            "REJECTED" -> "Rejected"
+                            else -> "Unknown"
+                        }
+                        Text("Review: $reviewLabel")
+                        if (item.reviewStatus == "REJECTED") {
+                            item.reviewReason?.takeIf { it.isNotBlank() }?.let { reason ->
+                                Text("Reason: $reason")
+                            }
+                        }
                     }
 
                     if (item.canEdit) {
-                        TextButton(onClick = { onEditItem(item.id) }, enabled = !state.deleting) {
+                        TextButton(
+                            onClick = { onEditItem(item.id) },
+                            enabled = !state.deleting
+                        ) {
                             Text("Edit")
                         }
                     }
+
                     TextButton(
                         onClick = { onRequestDelete(item.id) },
                         enabled = !state.deleting
@@ -146,7 +179,9 @@ internal fun MyItemsScreen(
             title = { Text("Delete item?") },
             text = { Text("Delete \"${item.title}\"? This cannot be undone.") },
             dismissButton = {
-                TextButton(onClick = onCancelDelete, enabled = !state.deleting) { Text("Cancel") }
+                TextButton(onClick = onCancelDelete, enabled = !state.deleting) {
+                    Text("Cancel")
+                }
             },
             confirmButton = {
                 TextButton(onClick = onConfirmDelete, enabled = !state.deleting) {
