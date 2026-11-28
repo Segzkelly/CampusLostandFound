@@ -3,6 +3,8 @@ name: Lab 3 CI
 on:
   push:
     branches: [sprint-3-lab3]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
