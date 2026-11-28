@@ -20,6 +20,14 @@ async function seed() {
             console.log(`Created local user: ${email}`);
         }
     }
+    const reviewer = await auth.getUserByEmail("lab3-reviewer@example.com");
+    await auth.setCustomUserClaims(reviewer.uid, {
+        ...reviewer.customClaims,
+        reviewer: true,
+    });
+
+    const updatedReviewer = await auth.getUser(reviewer.uid);
+    console.log(`Local reviewer claim: ${updatedReviewer.customClaims?.reviewer === true}`);
 
     const batch = db.batch();
     for (const [id, name] of Object.entries({
