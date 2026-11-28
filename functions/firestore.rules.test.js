@@ -148,3 +148,50 @@ test("R5 #11: owner cannot change a confirmed report's location", async () => {
         assert.equal(saved.status, "RESOLVED");
     });
 });
+
+test("owner must reset review to pending and clear the old decision when changing a title", async () => {
+    const { deleteField } = require("firebase/firestore");
+
+    await withRulesFixture(async ({ env, db, payload }) => {
+        const ref = doc(db, "lostFoundItems", "r5-title-reset");
+        await assertSucceeds(setDoc(ref, payload));
+
+        await env.withSecurityRulesDisabled(async (context) => {
+            await updateDoc(doc(context.firestore(), ref.path), {
+                reviewStatus: "CONFIRMED",
+                reviewReason: null,
+                reviewedBy: "test-reviewer",
+                reviewedAt: serverTimestamp(),
+            });
+        });
+
+        // A title change cannot keep the previous decision.
+        await assertFails(updateDoc(ref, {
+            title: "Keys found at the library",
+            updatedAt: serverTimestamp(),
+        }));
+
+        // Setting Pending is not enough if old decision metadata remains.
+        await assertFails(updateDoc(ref, {
+            title: "Keys found at the library",
+            reviewStatus: "PENDING",
+            updatedAt: serverTimestamp(),
+        }));
+
+        await assertSucceeds(updateDoc(ref, {
+            title: "Keys found at the library",
+            reviewStatus: "PENDING",
+            reviewReason: deleteField(),
+            reviewedBy: deleteField(),
+            reviewedAt: deleteField(),
+            updatedAt: serverTimestamp(),
+        }));
+
+        const saved = (await getDoc(ref)).data();
+        assert.equal(saved.title, "Keys found at the library");
+        assert.equal(saved.reviewStatus, "PENDING");
+        for (const key of ["reviewReason", "reviewedBy", "reviewedAt"]) {
+            assert.equal(Object.hasOwn(saved, key), false, `${key} should be removed`);
+        }
+    });
+});

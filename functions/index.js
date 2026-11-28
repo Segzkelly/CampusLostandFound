@@ -1,94 +1,91 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { createHash } = require("node:crypto");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { validateReviewReason } = require("./reviewReason");
+const { FieldValue, getFirestore } = require("firebase-admin/firestore");
+const { decideListing, normalizeTitle } = require("./listingPolicy");
 
 initializeApp();
 const db = getFirestore();
-const categoryPaths = new Set([
-    "categories/clothing",
-    "categories/electronics",
-    "categories/keys",
-    "categories/other",
-]);
 
-exports.reviewReport = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "Sign in to review reports.");
-    }
-    if (request.auth.token.reviewer !== true) {
-        throw new HttpsError("permission-denied", "Reviewer access is required.");
-    }
+function key(...parts) {
+    return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
+}
 
-    const { reportId, decision, reason } = request.data ?? {};
-    if (typeof reportId !== "string" || !/^[A-Za-z0-9]{20}$/.test(reportId)) {
-        throw new HttpsError("invalid-argument", "Invalid report ID.");
-    }
-    if (decision !== "CONFIRMED" && decision !== "REJECTED") {
-        throw new HttpsError("invalid-argument", "Choose Confirm or Reject.");
-    }
+exports.reviewListing = onDocumentWritten(
+    "lostFoundItems/{reportId}",
+    async (event) => {
+        const after = event.data?.after;
+        if (!after?.exists || after.get("reviewStatus") !== "PENDING") return;
 
-        const reviewReason = validateReviewReason(decision, reason);
+        await db.runTransaction(async (tx) => {
+            const report = await tx.get(after.ref);
 
-    const reportRef = db.collection("lostFoundItems").doc(reportId);
-    const logRef = db.collection("reviewDecisions").doc();
-
-    await db.runTransaction(async (tx) => {
-        const report = await tx.get(reportRef);
-        if (!report.exists) {
-            throw new HttpsError("not-found", "Report not found.");
-        }
-        if (report.get("ownerId") === request.auth.uid) {
-            throw new HttpsError("permission-denied", "You cannot review your own report.");
-        }
-        if (report.get("reviewStatus") !== "PENDING") {
-            throw new HttpsError("failed-precondition", "Only pending reports can be reviewed.");
-        }
-
-        if (decision === "CONFIRMED") {
-            const path = report.get("categoryRef")?.path;
-            if (!categoryPaths.has(path) || !(await tx.get(db.doc(path))).exists) {
-                throw new HttpsError("failed-precondition", "The report needs a valid category.");
+            // Ignore deleted, already reviewed, or superseded versions.
+            if (
+                !report.exists ||
+                report.get("reviewStatus") !== "PENDING" ||
+                !report.updateTime.isEqual(after.updateTime)
+            ) {
+                return;
             }
-        }
 
-        const result = {
-            reviewStatus: decision,
-            reviewReason: decision === "REJECTED" ? reviewReason : null,
-            reviewedBy: request.auth.uid,
-            reviewedAt: FieldValue.serverTimestamp(),
-        };
+            const ownerId = report.get("ownerId");
+            const title = normalizeTitle(report.get("title"));
+            const createdAt = report.get("createdAt");
+            const utcDay = createdAt.toDate().toISOString().slice(0, 10);
+            const checkedAtMs = Date.now();
 
-        tx.update(reportRef, { ...result, updatedAt: FieldValue.serverTimestamp() });
-        tx.set(logRef, { reportId, ...result });
-    });
+            const reportKey = key(
+                ownerId, report.id, createdAt.seconds, createdAt.nanoseconds
+            );
+            const auditKey = key(
+                reportKey, report.updateTime.seconds, report.updateTime.nanoseconds
+            );
 
-    return { reportId, reviewStatus: decision };
-});
+            const receiptRef = db.collection("listingReceipts").doc(reportKey);
+            const dayRef = db.collection("listingDailyCounts").doc(key(ownerId, utcDay));
+            const titleRef = db.collection("listingTitleHistory").doc(key(ownerId, title));
+            const auditRef = db.collection("reviewDecisions").doc(auditKey);
 
-exports.listPendingReports = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError("unauthenticated", "Sign in to view the review queue.");
+            const [receipt, day, titleHistory] = await tx.getAll(
+                receiptRef, dayRef, titleRef
+            );
+
+            const isNew = !receipt.exists;
+            const count = day.get("count") ?? 0;
+            const acceptedByAnotherReport =
+                titleHistory.exists && titleHistory.get("reportKey") !== reportKey;
+
+            const decision = decideListing({
+                checkedAtMs,
+                isNew,
+                earlierNewReportsToday: count,
+                previousTitleAcceptedAtMs: acceptedByAnotherReport
+                    ? titleHistory.get("acceptedAtMs")
+                    : null,
+            });
+
+            if (isNew) {
+                tx.create(receiptRef, { reportId: report.id });
+                tx.set(dayRef, { count: count + 1 });
+            }
+
+            if (decision.status === "CONFIRMED") {
+                tx.set(titleRef, { reportKey, acceptedAtMs: checkedAtMs });
+            }
+
+            const result = {
+                reviewStatus: decision.status,
+                reviewReason: decision.reason,
+                reviewedBy: "listing-policy",
+                reviewedAt: FieldValue.serverTimestamp(),
+            };
+
+            tx.update(report.ref, {
+                ...result,
+                updatedAt: FieldValue.serverTimestamp(),
+            });
+            tx.create(auditRef, { reportId: report.id, ...result });
+        });
     }
-    if (request.auth.token.reviewer !== true) {
-        throw new HttpsError("permission-denied", "Reviewer access is required.");
-    }
-
-    const snapshot = await db.collection("lostFoundItems")
-        .where("reviewStatus", "==", "PENDING")
-        .limit(50)
-        .get();
-
-    return {
-        reports: snapshot.docs
-            .filter((doc) => doc.get("ownerId") !== request.auth.uid)
-            .map((doc) => ({
-                id: doc.id,
-                title: doc.get("title"),
-                description: doc.get("description"),
-                location: doc.get("location"),
-                date: doc.get("date"),
-                status: doc.get("status"),
-            })),
-    };
-});
+);

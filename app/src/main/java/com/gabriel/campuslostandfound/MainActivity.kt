@@ -2,15 +2,6 @@ package com.gabriel.campuslostandfound
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.dp
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -31,8 +22,6 @@ import com.gabriel.campuslostandfound.state.CampusAppState
 import com.gabriel.campuslostandfound.state.SignedInSession
 import com.gabriel.campuslostandfound.ui.AuthScreen
 import com.gabriel.campuslostandfound.ui.MyItemsScreen
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
 import com.gabriel.campuslostandfound.ui.theme.CampusLostAndFoundTheme
 
 class MainActivity : ComponentActivity() {
@@ -53,6 +42,7 @@ private fun CampusApp(appState: CampusAppState) {
         Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
             val modifier = Modifier.padding(padding)
             val signedIn = session
+
             when {
                 auth.userId == null -> AuthScreen(
                     state = auth,
@@ -85,138 +75,6 @@ private fun SignedInScreen(
     val form by session.form.collectAsState()
     ShowToast(list.deleteNotice, session.list::consumeDeleteNotice)
 
-    val isReviewer by session.isReviewer.collectAsState()
-    val reports by session.pendingReports.collectAsState()
-    val loading by session.reviewLoading.collectAsState()
-    val error by session.reviewError.collectAsState()
-    var queueOpen by rememberSaveable { mutableStateOf(false) }
-    val submitting by session.reviewSubmitting.collectAsState()
-    val decisionError by session.reviewDecisionError.collectAsState()
-    var selectedReportId by rememberSaveable { mutableStateOf<String?>(null) }
-    var decision by rememberSaveable { mutableStateOf("") }
-    var reason by rememberSaveable { mutableStateOf("") }
-
-    if (queueOpen && isReviewer) {
-        BackHandler {
-            if (!submitting) queueOpen = false
-        }
-
-        LaunchedEffect(session) {
-            session.loadReviewQueue()
-        }
-
-        LazyColumn(modifier = modifier.fillMaxSize().padding(24.dp)) {
-            item {
-                TextButton(
-                    onClick = { queueOpen = false },
-                    enabled = !submitting
-                ) {
-                    Text("Back to My Items")
-                }
-                Text("Review Queue")
-            }
-
-            when {
-                loading -> item { CircularProgressIndicator() }
-                error != null -> item {
-                    Text(error.orEmpty())
-                    TextButton(onClick = session::loadReviewQueue) { Text("Retry") }
-                }
-                reports.isEmpty() -> item { Text("No pending reports.") }
-                else -> items(reports, key = { it.id }) { report ->
-                    Text(report.title, modifier = Modifier.padding(top = 16.dp))
-                    Text("${report.status} · ${report.location} · ${report.date}")
-                    Text(report.description)
-
-                    TextButton(
-                        enabled = !submitting,
-                        onClick = {
-                            session.clearReviewDecisionError()
-                            decision = "CONFIRMED"
-                            reason = ""
-                            selectedReportId = report.id
-                        }
-                    ) {
-                        Text("Confirm")
-                    }
-
-                    TextButton(
-                        enabled = !submitting,
-                        onClick = {
-                            session.clearReviewDecisionError()
-                            decision = "REJECTED"
-                            reason = ""
-                            selectedReportId = report.id
-                        }
-                    ) {
-                        Text("Reject")
-                    }
-                }
-            }
-        }
-
-        val selectedReport = reports.firstOrNull { it.id == selectedReportId }
-
-        LaunchedEffect(loading, error, selectedReportId, selectedReport) {
-            if (!loading && error == null && selectedReport == null) {
-                selectedReportId = null
-            }
-        }
-
-        if (selectedReport != null) {
-            val rejecting = decision == "REJECTED"
-
-            AlertDialog(
-                onDismissRequest = {
-                    if (!submitting) selectedReportId = null
-                },
-                title = {
-                    Text(
-                        if (rejecting) "Reject ${selectedReport.title}?"
-                        else "Confirm ${selectedReport.title}?"
-                    )
-                },
-                text = {
-                    androidx.compose.foundation.layout.Column {
-                        if (rejecting) {
-                            OutlinedTextField(
-                                value = reason,
-                                onValueChange = { reason = it },
-                                label = { Text("Reason (required, max 500 characters)") },
-                                enabled = !submitting
-                            )
-                        } else {
-                            Text("This report will be marked as confirmed.")
-                        }
-                        decisionError?.let { Text(it) }
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        enabled = !submitting,
-                        onClick = { selectedReportId = null }
-                    ) {
-                        Text("Cancel")
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = !submitting && (!rejecting || reason.trim().length in 1..500),
-                        onClick = {
-                            session.submitReviewDecision(selectedReport.id, decision, reason)
-                        }
-                    ) {
-                        Text(
-                            if (submitting) "Saving…"
-                            else if (rejecting) "Reject"
-                            else "Confirm"
-                        )
-                    }
-                }
-            )
-        }
-        return
-    }
     val activeForm = form
     if (activeForm == null) {
         MyItemsScreen(
@@ -230,7 +88,7 @@ private fun SignedInScreen(
             onCancelDelete = session.list::cancelDelete,
             onConfirmDelete = session.list::confirmDelete,
             modifier = modifier,
-            onOpenReviewQueue = if (isReviewer) ({ queueOpen = true }) else null
+            onOpenReviewQueue = null
         )
     } else {
         key(activeForm) {

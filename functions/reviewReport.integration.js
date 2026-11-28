@@ -1,87 +1,91 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } = require("firebase-admin/app");
-const { getAuth: getAdminAuth } = require("firebase-admin/auth");
-const { getFirestore } = require("firebase-admin/firestore");
-const { initializeApp, deleteApp } = require("firebase/app");
-const { getAuth, connectAuthEmulator, signInWithEmailAndPassword } = require("firebase/auth");
-const { getFunctions, connectFunctionsEmulator, httpsCallable } = require("firebase/functions");
+const { randomUUID } = require("node:crypto");
+const { setTimeout: sleep } = require("node:timers/promises");
+const { initializeApp, deleteApp } = require("firebase-admin/app");
+const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 
-test("R4: only a reviewer can decide another owner's pending report once", async () => {
-    assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, "127.0.0.1:9199");
+async function waitForDecision(ref) {
+    const deadline = Date.now() + 30_000;
+
+    while (Date.now() < deadline) {
+        const data = (await ref.get()).data();
+        if (data?.reviewStatus === "CONFIRMED" || data?.reviewStatus === "REJECTED") {
+            return data;
+        }
+        await sleep(250);
+    }
+
+    assert.fail(`No automatic decision within 30 seconds for ${ref.path}`);
+}
+
+test("R4: automatic decisions, title re-review, and concurrent duplicates", {
+    timeout: 120_000,
+}, async () => {
     assert.equal(process.env.FIRESTORE_EMULATOR_HOST, "127.0.0.1:8180");
 
-    const projectId = "demo-campus-lab3-r4";
-    const admin = initializeAdmin({ projectId });
-    const auth = getAdminAuth(admin);
-    const db = getFirestore(admin);
-    const clients = [];
-    const password = "LocalR4TestOnly123!";
+    const app = initializeApp({ projectId: "demo-campus-lab3-r4" });
+    const db = getFirestore(app);
+    const reports = db.collection("lostFoundItems");
+    const audit = db.collection("reviewDecisions");
+    const owner = `test-owner-${randomUUID()}`;
+    const concurrentOwner = `test-concurrent-${randomUUID()}`;
 
-    async function makeCaller(name, reviewer) {
-        const email = `${name}@example.com`;
-        const user = await auth.createUser({ email, password });
-        if (reviewer) {
-            await auth.setCustomUserClaims(user.uid, { reviewer: true });
-        }
+    async function submit(ownerId, title) {
+        const ref = reports.doc();
+        await ref.set({
+            ownerId,
+            title,
+            reviewStatus: "PENDING",
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        return ref;
+    }
 
-        const app = initializeApp({ projectId, apiKey: "demo-key" }, name);
-        clients.push(app);
-        const clientAuth = getAuth(app);
-        connectAuthEmulator(clientAuth, "http://127.0.0.1:9199");
-        await signInWithEmailAndPassword(clientAuth, email, password);
-
-        const functions = getFunctions(app);
-        connectFunctionsEmulator(functions, "127.0.0.1", 5101);
-        return { uid: user.uid, review: httpsCallable(functions, "reviewReport") };
+    async function auditStatuses(ref) {
+        const snapshot = await audit.where("reportId", "==", ref.id).get();
+        return snapshot.docs.map((doc) => doc.get("reviewStatus")).sort();
     }
 
     try {
-        const owner = await makeCaller("r4-owner", false);
-        const reviewer = await makeCaller("r4-reviewer", true);
-        const categoryRef = db.collection("categories").doc("keys");
-        await categoryRef.set({ name: "Keys" });
+        const first = await submit(owner, "Library Keys");
+        const confirmed = await waitForDecision(first);
+        assert.equal(confirmed.reviewStatus, "CONFIRMED");
+        assert.equal(confirmed.reviewReason, null);
 
-        const reports = db.collection("lostFoundItems");
-        const pending = await reports.add({
-            ownerId: owner.uid,
+        const duplicate = await submit(owner, "  LIBRARY   keys  ");
+        const rejected = await waitForDecision(duplicate);
+        assert.equal(rejected.reviewStatus, "REJECTED");
+        assert.match(rejected.reviewReason, /last 24 hours/);
+
+        await duplicate.update({
+            title: "Keys near the front desk",
             reviewStatus: "PENDING",
-            categoryRef,
+            reviewReason: FieldValue.delete(),
+            reviewedBy: FieldValue.delete(),
+            reviewedAt: FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
         });
-        const ownReport = await reports.add({
-            ownerId: reviewer.uid,
-            reviewStatus: "PENDING",
-            categoryRef,
-        });
+        assert.equal((await waitForDecision(duplicate)).reviewStatus, "CONFIRMED");
 
-        const confirm = (reportId) => ({ reportId, decision: "CONFIRMED" });
+        const pair = await Promise.all([
+            submit(concurrentOwner, "Blue Umbrella"),
+            submit(concurrentOwner, "blue umbrella"),
+        ]);
+        const decisions = await Promise.all(pair.map(waitForDecision));
+        assert.deepEqual(
+            decisions.map((result) => result.reviewStatus).sort(),
+            ["CONFIRMED", "REJECTED"]
+        );
 
-        await assert.rejects(owner.review(confirm(pending.id)), {
-            code: "functions/permission-denied",
-        });
-        await assert.rejects(reviewer.review(confirm(ownReport.id)), {
-            code: "functions/permission-denied",
-        });
-        assert.equal((await pending.get()).get("reviewStatus"), "PENDING");
-        assert.equal((await ownReport.get()).get("reviewStatus"), "PENDING");
-
-        const result = await reviewer.review(confirm(pending.id));
-        assert.equal(result.data.reviewStatus, "CONFIRMED");
-
-        await assert.rejects(reviewer.review(confirm(pending.id)), {
-            code: "functions/failed-precondition",
-        });
-
-        const saved = await pending.get();
-        assert.equal(saved.get("reviewStatus"), "CONFIRMED");
-        assert.equal(saved.get("reviewedBy"), reviewer.uid);
-
-        const audit = await db.collection("reviewDecisions").get();
-        assert.equal(audit.size, 1);
-        assert.equal(audit.docs[0].get("reportId"), pending.id);
-        assert.equal(audit.docs[0].get("reviewStatus"), "CONFIRMED");
+        assert.deepEqual(await auditStatuses(first), ["CONFIRMED"]);
+        assert.deepEqual(await auditStatuses(duplicate), ["CONFIRMED", "REJECTED"]);
+        for (const [index, ref] of pair.entries()) {
+            assert.deepEqual(await auditStatuses(ref), [decisions[index].reviewStatus]);
+        }
     } finally {
-        await Promise.all(clients.map((app) => deleteApp(app)));
-        await deleteAdmin(admin);
+        await db.terminate();
+        await deleteApp(app);
     }
 });

@@ -49,8 +49,10 @@ class FirestoreLostFoundRepository(
             "Sign in to edit an item."
         }
         require(itemId.isNotBlank() && '/' !in itemId) { "Invalid item ID." }
+
         val document = firestore.collection("lostFoundItems").document(itemId)
             .get().awaitResult()
+
         return document.toObject(LostFoundItem::class.java)
             ?.takeIf { it.ownerId == ownerId }
             ?.copy(id = document.id)
@@ -103,9 +105,27 @@ class FirestoreLostFoundRepository(
         checkNotNull(auth.currentUser?.uid) { "Sign in to edit an item." }
         require(itemId.isNotBlank() && '/' !in itemId) { "Invalid item ID." }
 
-        firestore.collection("lostFoundItems").document(itemId)
-            .update(editableFields(title, description, location, date, status, categoryId))
-            .awaitResult()
+        val document = firestore.collection("lostFoundItems").document(itemId)
+        val fields = editableFields(title, description, location, date, status, categoryId)
+
+        firestore.runTransaction { transaction ->
+            val current = transaction.get(document)
+            check(current.exists()) { "This item no longer exists." }
+
+            val updates = if (current.getString("title") != fields["title"]) {
+                fields + mapOf(
+                    "reviewStatus" to "PENDING",
+                    "reviewReason" to FieldValue.delete(),
+                    "reviewedBy" to FieldValue.delete(),
+                    "reviewedAt" to FieldValue.delete()
+                )
+            } else {
+                fields
+            }
+
+            transaction.update(document, updates)
+            Unit
+        }.awaitResult()
     }
 
     override suspend fun deleteItem(itemId: String) {

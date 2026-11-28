@@ -51,6 +51,32 @@ service cloud.firestore {
     }
 
     match /lostFoundItems/{itemId} {
+      function validOwnerEdit() {
+        let next = request.resource.data;
+        let changed = next.diff(resource.data).affectedKeys();
+        let titleChanged = changed.hasAny(['title']);
+        let wasConfirmed = resource.data.get('reviewStatus', 'PENDING') == 'CONFIRMED';
+
+        return changed.hasOnly([
+          'title', 'description', 'location', 'date', 'incidentDate',
+          'status', 'categoryRef', 'updatedAt',
+          'reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt'
+        ])
+        && (
+          !wasConfirmed || changed.hasOnly([
+            'title', 'status', 'updatedAt',
+            'reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt'
+          ])
+        )
+        && (
+          (titleChanged
+            && next.reviewStatus == 'PENDING'
+            && !next.keys().hasAny(['reviewReason', 'reviewedBy', 'reviewedAt']))
+          || (!titleChanged
+            && !changed.hasAny(['reviewStatus', 'reviewReason', 'reviewedBy', 'reviewedAt']))
+        );
+      }
+
       allow read: if request.auth != null
         && resource.data.ownerId == request.auth.uid;
 
@@ -68,16 +94,7 @@ service cloud.firestore {
       allow update: if request.auth != null
         && resource.data.ownerId == request.auth.uid
         && validItem(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'description', 'location', 'date', 'incidentDate',
-          'status', 'categoryRef', 'updatedAt'
-        ])
-        && (
-          resource.data.get('reviewStatus', 'PENDING') != 'CONFIRMED'
-          || request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'updatedAt'
-          ])
-        );
+        && validOwnerEdit();
     }
   }
 }
