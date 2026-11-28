@@ -2,7 +2,7 @@ name: Lab 3 CI
 
 on:
   push:
-    branches: [sprint-3-lab3]
+    branches: [sprint-3-lab3, main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -36,13 +36,23 @@ jobs:
       - name: Install Functions dependencies
         run: npm ci --prefix functions
 
-      - name: Run review-reason tests
-        run: node --test functions/reviewReason.test.js
+      - name: Run listing policy unit tests
+        run: node --test functions/listingPolicy.test.js
 
-      - name: Run Firestore rules regression test
+      - name: Run Firestore rules regression tests
         run: |
           npx --yes --package=firebase-tools@15.37.0 firebase emulators:exec \
             --config firebase.rules-test.json \
             --only firestore \
             --project demo-campus-lab3-rules \
             "node --test functions/firestore.rules.test.js"
+
+      - name: Run automatic review integration test
+        env:
+          FUNCTIONS_DISCOVERY_TIMEOUT: '30'
+        run: |
+          npx --yes --package=firebase-tools@15.37.0 firebase emulators:exec \
+            --config firebase.r4-test.json \
+            --only firestore,functions \
+            --project demo-campus-lab3-r4 \
+            "node --test functions/reviewReport.integration.js"
